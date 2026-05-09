@@ -48,6 +48,7 @@ CREATE_EXTENSION_CITEXT        = "CREATE EXTENSION IF NOT EXISTS citext;"
 CREATE_EXTENSION_FUZZYSTRMATCH = "CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;"
 CREATE_EXTENSION_BTREE_GIN     = "CREATE EXTENSION IF NOT EXISTS btree_gin;"
 CREATE_EXTENSION_PG_TRGM       = "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+CREATE_EXTENSION_POSTGIS       = "CREATE EXTENSION IF NOT EXISTS postgis;"
 
 """
 OPERACIONES CREATE:
@@ -552,3 +553,152 @@ SELECT_AUDITORIA_FILTER_BASE = """
     FROM auditoria
 """
 SELECT_AUDITORIA_FILTER_TAIL = "    ORDER BY created_at DESC"
+
+"""
+TEMA 14 — GIS / PostGIS: puntos de alumnos y polígonos de asignaturas
+    Requiere la extensión PostGIS activa en la base de datos.
+    Las columnas geom son NULLABLE para no romper registros existentes.
+"""
+
+# Migraciones: añadir columnas de geometría si no existen
+ALTER_ALUMNOS_GEOM = """
+    ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS geom geometry(Point, 4326);
+"""
+
+ALTER_CURSOS_GEOM = """
+    ALTER TABLE cursos ADD COLUMN IF NOT EXISTS geom geometry(Polygon, 4326);
+"""
+
+# Índices espaciales GiST
+CREATE_INDEX_ALUMNOS_GEOM = """
+    CREATE INDEX IF NOT EXISTS idx_alumnos_geom ON alumnos USING GIST (geom);
+"""
+
+CREATE_INDEX_CURSOS_GEOM = """
+    CREATE INDEX IF NOT EXISTS idx_cursos_geom ON cursos USING GIST (geom);
+"""
+
+# Seed: asignar puntos (lon, lat) a los primeros 4 alumnos sin ubicación
+# Coordenadas ficticias en el campus de la Universidad (área de Madrid)
+SEED_ALUMNOS_GEOM = """
+    WITH ranked AS (
+        SELECT id, row_number() OVER (ORDER BY nombre) AS rn
+        FROM alumnos
+        WHERE geom IS NULL
+        LIMIT 4
+    )
+    UPDATE alumnos
+    SET geom = CASE
+        WHEN r.rn = 1 THEN ST_SetSRID(ST_MakePoint(-3.8835, 40.4852), 4326)
+        WHEN r.rn = 2 THEN ST_SetSRID(ST_MakePoint(-3.8841, 40.4848), 4326)
+        WHEN r.rn = 3 THEN ST_SetSRID(ST_MakePoint(-3.8848, 40.4843), 4326)
+        WHEN r.rn = 4 THEN ST_SetSRID(ST_MakePoint(-3.8844, 40.4857), 4326)
+    END
+    FROM ranked r
+    WHERE alumnos.id = r.id;
+"""
+
+# Seed: asignar polígonos (aulas) a los primeros 4 cursos sin polígono
+# Cada polígono representa un aula ficticia dentro del campus universitario
+SEED_CURSOS_GEOM = """
+    WITH ranked AS (
+        SELECT id, row_number() OVER (ORDER BY nombre) AS rn
+        FROM cursos
+        WHERE geom IS NULL
+        LIMIT 4
+    )
+    UPDATE cursos
+    SET geom = CASE
+        WHEN r.rn = 1 THEN ST_GeomFromText(
+            'POLYGON((-3.8840 40.4851, -3.8836 40.4851, -3.8836 40.4854, -3.8840 40.4854, -3.8840 40.4851))',
+            4326)
+        WHEN r.rn = 2 THEN ST_GeomFromText(
+            'POLYGON((-3.8846 40.4846, -3.8842 40.4846, -3.8842 40.4849, -3.8846 40.4849, -3.8846 40.4846))',
+            4326)
+        WHEN r.rn = 3 THEN ST_GeomFromText(
+            'POLYGON((-3.8852 40.4841, -3.8848 40.4841, -3.8848 40.4844, -3.8852 40.4844, -3.8852 40.4841))',
+            4326)
+        WHEN r.rn = 4 THEN ST_GeomFromText(
+            'POLYGON((-3.8839 40.4856, -3.8835 40.4856, -3.8835 40.4859, -3.8839 40.4859, -3.8839 40.4856))',
+            4326)
+    END
+    FROM ranked r
+    WHERE cursos.id = r.id;
+"""
+
+# Actualizar la posición de un alumno al centroide del aula de un curso
+VIAJAR_ALUMNO_A_AULA = """
+    UPDATE alumnos
+    SET geom = (
+        SELECT ST_Centroid(geom)
+        FROM cursos
+        WHERE id = %s AND geom IS NOT NULL
+    )
+    WHERE id = %s
+    RETURNING ST_X(geom) AS lon, ST_Y(geom) AS lat, ST_AsText(geom) AS wkt;
+"""
+
+# Consultar la ubicación actual de un alumno
+SELECT_ALUMNO_UBICACION = """
+    SELECT
+        a.id,
+        a.nombre,
+        ST_X(a.geom)      AS lon,
+        ST_Y(a.geom)      AS lat,
+        ST_AsText(a.geom) AS wkt
+    FROM alumnos a
+    WHERE a.id = %s AND a.geom IS NOT NULL;
+"""
+
+# Consultar la información espacial de un curso (polígono del aula)
+SELECT_CURSO_GEOM_INFO = """
+    SELECT
+        c.id,
+        c.nombre,
+        ST_AsText(c.geom)                            AS wkt,
+        ST_X(ST_Centroid(c.geom))                   AS centroide_lon,
+        ST_Y(ST_Centroid(c.geom))                   AS centroide_lat,
+        ROUND(ST_Area(c.geom::geography)::numeric, 2) AS area_m2
+    FROM cursos c
+    WHERE c.id = %s AND c.geom IS NOT NULL;
+"""
+
+# Cursos que tienen polígono de aula asignado
+SELECT_CURSOS_CON_GEOM = """
+    SELECT c.id, c.nombre
+    FROM cursos c
+    WHERE c.geom IS NOT NULL
+    ORDER BY c.nombre;
+"""
+
+# Alumnos cuya posición está dentro del aula de un curso (ST_Within)
+SELECT_ALUMNOS_EN_AULA = """
+    SELECT
+        a.id,
+        a.nombre,
+        ST_X(a.geom) AS lon,
+        ST_Y(a.geom) AS lat
+    FROM alumnos a, cursos c
+    WHERE c.id = %s
+      AND c.geom IS NOT NULL
+      AND a.geom IS NOT NULL
+      AND ST_Within(a.geom, c.geom)
+    ORDER BY a.nombre;
+"""
+
+# Distancia en metros entre el alumno y el centroide del aula (para el viaje)
+SELECT_DISTANCIA_ALUMNO_AULA = """
+    SELECT
+        a.nombre                                                   AS alumno,
+        c.nombre                                                   AS aula,
+        ST_X(ST_Centroid(c.geom))                                  AS destino_lon,
+        ST_Y(ST_Centroid(c.geom))                                  AS destino_lat,
+        CASE
+            WHEN a.geom IS NOT NULL
+            THEN ROUND(ST_Distance(a.geom::geography,
+                                   ST_Centroid(c.geom)::geography)::numeric, 2)
+            ELSE NULL
+        END                                                        AS distancia_m
+    FROM alumnos a, cursos c
+    WHERE a.id = %s AND c.id = %s;
+"""

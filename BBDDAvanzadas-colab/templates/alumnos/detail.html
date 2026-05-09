@@ -29,9 +29,46 @@
         </div>
         <button class="btn" style="width:100%;margin-top:12px;"
                 onclick="openRechargeDetail('{{ alumno[0] }}','{{ alumno[1] }}','{{ '%.2f'|format(alumno[4]) }}')">+ Recargar saldo</button>
+        {% if aulas_con_geom %}
+        <button class="btn btn-primary" style="width:100%;margin-top:8px;"
+                onclick="openViajar('{{ alumno[0] }}','{{ alumno[1] }}')">✈ Viajar a aula</button>
+        {% endif %}
         <button class="btn btn-danger" style="width:100%;margin-top:8px;"
                 onclick="openModal('modal-confirmar-eliminar')">Eliminar alumno</button>
       </div>
+
+      <!-- Sección GIS: ubicación actual del alumno -->
+      {% if ubicacion %}
+      <div class="detail-card" style="margin-top:16px;">
+        <div style="font-family:var(--font-secondary);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--fg-muted);margin-bottom:10px;">
+          Ubicación actual <span style="color:#1a7a4a;">● GIS</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+          <div style="padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);text-align:center;">
+            <div style="font-family:var(--font-secondary);font-size:9px;font-weight:600;text-transform:uppercase;color:var(--fg-muted);margin-bottom:3px;">Longitud</div>
+            <div id="alumno-lon" style="font-family:var(--font-secondary);font-size:12px;font-weight:600;">{{ '%.6f'|format(ubicacion[2]) }}</div>
+          </div>
+          <div style="padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);text-align:center;">
+            <div style="font-family:var(--font-secondary);font-size:9px;font-weight:600;text-transform:uppercase;color:var(--fg-muted);margin-bottom:3px;">Latitud</div>
+            <div id="alumno-lat" style="font-family:var(--font-secondary);font-size:12px;font-weight:600;">{{ '%.6f'|format(ubicacion[3]) }}</div>
+          </div>
+        </div>
+        <div style="font-family:var(--font-secondary);font-size:10px;color:var(--fg-muted);word-break:break-all;" id="alumno-wkt">{{ ubicacion[4] }}</div>
+        <a href="https://www.openstreetmap.org/?mlat={{ ubicacion[3] }}&mlon={{ ubicacion[2] }}&zoom=18"
+           target="_blank" rel="noopener"
+           class="btn" style="width:100%;margin-top:10px;font-size:12px;">Ver en mapa ↗</a>
+      </div>
+      {% else %}
+      <div class="detail-card" style="margin-top:16px;opacity:.7;">
+        <div style="font-family:var(--font-secondary);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--fg-muted);margin-bottom:6px;">
+          Ubicación actual <span style="color:#b91c1c;">○ GIS</span>
+        </div>
+        <div style="font-size:13px;color:var(--fg-muted);">Sin ubicación registrada.</div>
+        {% if aulas_con_geom %}
+        <div style="font-size:11px;color:var(--fg-muted);margin-top:6px;">Usa «Viajar a aula» para asignar una posición.</div>
+        {% endif %}
+      </div>
+      {% endif %}
     </div>
 
     <!-- Tabla de cursos -->
@@ -79,6 +116,36 @@
     </div>
   </div>
 </div>
+<!-- Modal: Viajar a Aula (GIS) -->
+<div id="modal-viajar" class="modal-overlay hidden" onclick="if(event.target===this) closeModal('modal-viajar')">
+  <div class="modal modal-enter">
+    <h2>✈ Viajar a aula</h2>
+    <p class="modal-sub">POST /alumnos/viajar — mueve al alumno al centroide del aula</p>
+    <form id="form-viajar" onsubmit="submitViajar(event)">
+      <input type="hidden" id="v-alumno-id" name="alumno_id" value="{{ alumno[0] }}" />
+      <div class="form-group">
+        <label class="form-label">Alumno</label>
+        <p style="font-family:var(--font-secondary);font-size:13px;color:var(--fg);margin-top:4px;">{{ alumno[1] }}</p>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Aula de destino</label>
+        <select class="form-input" id="v-curso-id" name="curso_id" required>
+          <option value="">-- Selecciona un aula --</option>
+          {% for cid, cnombre in aulas_con_geom %}
+          <option value="{{ cid }}">{{ cnombre }}</option>
+          {% endfor %}
+        </select>
+        <p class="form-error" id="v-curso-err" style="display:none;"></p>
+      </div>
+      <div id="v-resultado" style="display:none;margin-bottom:12px;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:var(--font-secondary);"></div>
+      <div class="form-actions">
+        <button type="button" class="btn" onclick="closeModal('modal-viajar')">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Viajar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- Modal: Recargar saldo (detail) -->
 <div id="modal-recharge" class="modal-overlay hidden" onclick="if(event.target===this) closeModal('modal-recharge')">
   <div class="modal modal-enter">
