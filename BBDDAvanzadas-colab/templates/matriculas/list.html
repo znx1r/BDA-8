@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container page-enter">
+  <div class="page-header">
+    <h1>Matrículas</h1>
+    <p>GET /matriculas — {{ total }} registros</p>
+  </div>
+
+  <div class="table-wrap">
+    <form method="get" class="filter-bar" id="filter-form">
+      <div class="filter-group">
+        <label class="filter-label">Buscar</label>
+        <input class="filter-input filter-input-wide" name="q" value="{{ q }}" placeholder="Alumno o curso…" autocomplete="off" />
+      </div>
+      <div class="filter-sep"></div>
+      <div class="filter-group">
+        <label class="filter-label">Desde</label>
+        <input class="filter-input" name="fecha_desde" type="date" value="{{ fecha_desde or '' }}" />
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">Hasta</label>
+        <input class="filter-input" name="fecha_hasta" type="date" value="{{ fecha_hasta or '' }}" />
+      </div>
+      <button type="submit" class="btn btn-primary" style="margin-left:auto;">Filtrar</button>
+      <a href="/matriculas/" class="btn">Limpiar</a>
+    </form>
+
+    <div class="table-toolbar">
+      <span class="pagination-info">{{ filtered }} de {{ total }} registros</span>
+      <div class="toolbar-spacer"></div>
+      <button class="btn" onclick="openModal('modal-nueva-matricula')" style="margin-right:8px;">Matricular (simple)</button>
+      <button class="btn btn-primary" onclick="openModal('modal-enroll-tx')">⚡ Matricular (transaccional)</button>
+    </div>
+
+    {% if rows %}
+    <table>
+      <thead>
+        <tr><th>Alumno</th><th>Curso</th><th>Profesor</th><th>Fecha</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for alumno, curso, profesor, fecha, alumno_id, curso_id in rows %}
+        <tr>
+          <td><strong>{{ alumno }}</strong></td>
+          <td>{{ curso }}</td>
+          <td class="td-muted">{{ profesor }}</td>
+          <td class="td-mono td-muted">{{ fecha }}</td>
+          <td style="width:40px;">
+            <button class="btn btn-danger" style="padding:4px 10px;font-size:12px;"
+                    onclick="event.stopPropagation(); confirmDeleteMatricula('{{ alumno_id }}','{{ curso_id }}','{{ alumno }}','{{ curso }}')">✕</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="pagination">
+      <span class="pagination-info">{{ filtered }} registros</span>
+      <div class="pagination-btns">
+        <a href="?q={{ q }}&fecha_desde={{ fecha_desde or '' }}&fecha_hasta={{ fecha_hasta or '' }}&page={{ page - 1 }}" class="pg-btn {{ 'disabled' if page == 1 }}">‹</a>
+        {% for p in pages %}
+          <a href="?q={{ q }}&fecha_desde={{ fecha_desde or '' }}&fecha_hasta={{ fecha_hasta or '' }}&page={{ p }}" class="pg-btn {{ 'active' if p == page }}">{{ p }}</a>
+        {% endfor %}
+        <a href="?q={{ q }}&fecha_desde={{ fecha_desde or '' }}&fecha_hasta={{ fecha_hasta or '' }}&page={{ page + 1 }}" class="pg-btn {{ 'disabled' if page == total_pages }}">›</a>
+      </div>
+    </div>
+    {% else %}
+    <div class="empty">
+      <div class="empty-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
+      </div>
+      No se encontraron matrículas{% if q %} para "{{ q }}"{% endif %}.
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     Modal: Matriculación Transaccional (visual + ACID)
+     ═══════════════════════════════════════════════════════════ -->
+<div id="modal-enroll-tx" class="modal-overlay hidden" onclick="if(event.target===this) resetEnrollModal()">
+  <div class="modal modal-enter" style="max-width:620px;width:100%;">
+    <h2>Matriculación transaccional</h2>
+    <p class="modal-sub">POST /matriculas/enroll — BEGIN / verificaciones / COMMIT o ROLLBACK</p>
+
+    <!-- Paso 1: Selección -->
+    <div id="enroll-form-section">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px;">
+        <!-- Alumno -->
+        <div class="form-group" style="margin:0;">
+          <label class="form-label">Alumno</label>
+          <input class="form-input" id="et-alumno-q" placeholder="Buscar alumno…" autocomplete="off"
+                 oninput="etFilterAlumnos(this.value)" />
+          <input type="hidden" id="et-alumno-id" />
+          <div class="autocomplete-list" id="et-alumno-list" style="display:none;"></div>
+          <p class="form-error" id="et-alumno-err" style="display:none;"></p>
+        </div>
+        <!-- Asignatura -->
+        <div class="form-group" style="margin:0;">
+          <label class="form-label">Asignatura</label>
+          <input class="form-input" id="et-curso-q" placeholder="Buscar asignatura…" autocomplete="off"
+                 oninput="etFilterCursos(this.value)" />
+          <input type="hidden" id="et-curso-id" />
+          <div class="autocomplete-list" id="et-curso-list" style="display:none;"></div>
+          <p class="form-error" id="et-curso-err" style="display:none;"></p>
+        </div>
+      </div>
+
+      <!-- Preview card (aparece al seleccionar ambos) -->
+      <div id="enroll-preview" style="display:none;margin-top:16px;padding:16px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);">
+        <div style="font-family:var(--font-secondary);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--fg-muted);margin-bottom:10px;">Vista previa de la transacción</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+          <div style="text-align:center;">
+            <div style="font-family:var(--font-secondary);font-size:10px;color:var(--fg-muted);margin-bottom:4px;">SALDO ALUMNO</div>
+            <div id="prev-saldo" style="font-size:18px;font-weight:700;letter-spacing:-0.3px;"></div>
+          </div>
+          <div style="text-align:center;border-left:1px solid var(--border);border-right:1px solid var(--border);">
+            <div style="font-family:var(--font-secondary);font-size:10px;color:var(--fg-muted);margin-bottom:4px;">PRECIO</div>
+            <div id="prev-precio" style="font-size:18px;font-weight:700;letter-spacing:-0.3px;"></div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-family:var(--font-secondary);font-size:10px;color:var(--fg-muted);margin-bottom:4px;">PLAZAS</div>
+            <div id="prev-plazas" style="font-size:18px;font-weight:700;letter-spacing:-0.3px;"></div>
+          </div>
+        </div>
+        <div id="prev-warning" style="display:none;margin-top:10px;font-family:var(--font-secondary);font-size:12px;color:#b91c1c;padding:8px 10px;background:#fdecea;border-radius:6px;"></div>
+      </div>
+
+      <div class="form-actions" style="margin-top:20px;">
+        <button type="button" class="btn" onclick="resetEnrollModal()">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="btn-run-enroll" onclick="runEnrollTransaction()">
+          ▶ Ejecutar transacción
+        </button>
+      </div>
+    </div>
+
+    <!-- Paso 2: Log de la transacción (aparece tras enviar) -->
+    <div id="enroll-log-section" style="display:none;">
+      <div class="tx-log" id="enroll-tx-log" style="display:block;margin-top:16px;"></div>
+      <div id="enroll-result-card" style="display:none;margin-top:16px;padding:16px;border-radius:var(--radius);"></div>
+      <div class="form-actions" style="margin-top:16px;">
+        <button type="button" class="btn" onclick="resetEnrollModal()">Cerrar</button>
+        <button type="button" class="btn btn-primary" id="btn-enroll-again" style="display:none;" onclick="resetEnrollForm()">
+          + Nueva matrícula
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Matricula simple -->
+<div id="modal-nueva-matricula" class="modal-overlay hidden" onclick="if(event.target===this) closeModal('modal-nueva-matricula')">
+  <div class="modal modal-enter">
+    <h2>Matricular alumno</h2>
+    <p class="modal-sub">POST /matriculas/new</p>
+    <form id="form-matricula" onsubmit="submitMatricula(event)">
+      <div class="form-group">
+        <label class="form-label">Alumno</label>
+        <input class="form-input" id="m-alumno-q" placeholder="Buscar alumno…" autocomplete="off"
+               oninput="filterAlumnos(this.value)" />
+        <input type="hidden" name="alumno_id" id="m-alumno-id" />
+        <div class="autocomplete-list" id="m-alumno-list" style="display:none;"></div>
+        <p class="form-error" id="m-alumno_id-err" style="display:none;"></p>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Curso</label>
+        <input class="form-input" id="m-curso-q" placeholder="Buscar curso…" autocomplete="off"
+               oninput="filterCursos(this.value)" />
+        <input type="hidden" name="curso_id" id="m-curso-id" />
+        <div class="autocomplete-list" id="m-curso-list" style="display:none;"></div>
+        <p class="form-error" id="m-curso_id-err" style="display:none;"></p>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn" onclick="closeModal('modal-nueva-matricula')">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Guardar matrícula</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: Confirmar eliminación -->
+<div id="modal-confirmar-eliminar" class="modal-overlay hidden" onclick="if(event.target===this) closeModal('modal-confirmar-eliminar')">
+  <div class="modal modal-enter">
+    <h2>Eliminar matrícula</h2>
+    <p class="modal-sub">Esta acción no se puede deshacer.</p>
+    <p id="confirm-delete-msg" style="margin:16px 0;"></p>
+    <div class="form-actions">
+      <button type="button" class="btn" onclick="closeModal('modal-confirmar-eliminar')">Cancelar</button>
+      <button type="button" class="btn btn-danger" onclick="executeDeleteMatricula()">Sí, eliminar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const ALUMNOS_DATA = {{ alumnos | tojson }};
+const CURSOS_DATA  = {{ cursos  | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/matriculas.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container page-enter">
+  <div class="page-header">
+    <h1>Analítica SQL</h1>
+    <p>Consultas avanzadas sobre matrículas — Tema 13: FILTER · ROLLUP · GROUPING SETS · ROW_NUMBER</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════
+       CASO 1 — FILTER: pivot de matrículas por trimestre
+       ══════════════════════════════════════════════════ -->
+  <div class="table-wrap" style="margin-bottom:32px;">
+    <div class="table-toolbar">
+      <div>
+        <span style="font-family:var(--font-secondary);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--fg-muted);">Caso 1 — FILTER</span>
+        <span style="font-family:var(--font-secondary);font-size:12px;color:var(--fg-muted);margin-left:8px;">Matrículas por trimestre para cada asignatura (pivote)</span>
+      </div>
+    </div>
+    <div class="tx-log" style="margin:12px 20px 0;padding:10px 14px;font-size:12px;">
+      <code>COUNT(*) FILTER (WHERE EXTRACT(quarter FROM created_at) = N)</code>
+    </div>
+
+    {% if rows_filter %}
+    <table>
+      <thead>
+        <tr>
+          <th>Asignatura</th>
+          <th style="text-align:center;">T1 <span class="badge" style="font-size:10px;">Ene–Mar</span></th>
+          <th style="text-align:center;">T2 <span class="badge" style="font-size:10px;">Abr–Jun</span></th>
+          <th style="text-align:center;">T3 <span class="badge" style="font-size:10px;">Jul–Sep</span></th>
+          <th style="text-align:center;">T4 <span class="badge" style="font-size:10px;">Oct–Dic</span></th>
+          <th style="text-align:center;">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for asignatura, t1, t2, t3, t4, total in rows_filter %}
+        <tr>
+          <td><strong>{{ asignatura }}</strong></td>
+          <td style="text-align:center;">
+            {% if t1 %}<span class="badge badge-green">{{ t1 }}</span>{% else %}<span class="td-muted">—</span>{% endif %}
+          </td>
+          <td style="text-align:center;">
+            {% if t2 %}<span class="badge badge-green">{{ t2 }}</span>{% else %}<span class="td-muted">—</span>{% endif %}
+          </td>
+          <td style="text-align:center;">
+            {% if t3 %}<span class="badge badge-green">{{ t3 }}</span>{% else %}<span class="td-muted">—</span>{% endif %}
+          </td>
+          <td style="text-align:center;">
+            {% if t4 %}<span class="badge badge-green">{{ t4 }}</span>{% else %}<span class="td-muted">—</span>{% endif %}
+          </td>
+          <td style="text-align:center;"><span class="badge badge-dark">{{ total }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty"><div class="empty-icon"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg></div>Sin datos de matrículas.</div>
+    {% endif %}
+  </div>
+
+  <!-- ══════════════════════════════════════════════════
+       CASO 2 — ROLLUP: matrículas por mes y alumno
+       ══════════════════════════════════════════════════ -->
+  <div class="table-wrap" style="margin-bottom:32px;">
+    <div class="table-toolbar">
+      <div>
+        <span style="font-family:var(--font-secondary);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--fg-muted);">Caso 2 — ROLLUP</span>
+        <span style="font-family:var(--font-secondary);font-size:12px;color:var(--fg-muted);margin-left:8px;">Detalle por (mes, alumno) + subtotal por mes + total global</span>
+      </div>
+    </div>
+    <div class="tx-log" style="margin:12px 20px 0;padding:10px 14px;font-size:12px;">
+      <code>GROUP BY ROLLUP (date_trunc('month', created_at), alumno)</code>
+    </div>
+
+    {% if rows_rollup %}
+    <table>
+      <thead>
+        <tr><th>Mes</th><th>Alumno</th><th style="text-align:center;">Matrículas</th><th>Tipo de fila</th></tr>
+      </thead>
+      <tbody>
+        {% for mes, alumno, n, g_mes, g_alu in rows_rollup %}
+        {% if g_mes == 1 %}
+        <tr style="background:var(--surface);font-weight:700;">
+          <td colspan="2" class="td-muted" style="font-family:var(--font-secondary);font-size:11px;text-transform:uppercase;letter-spacing:.06em;">TOTAL GLOBAL</td>
+          <td style="text-align:center;"><span class="badge badge-dark">{{ n }}</span></td>
+          <td><span class="badge badge-red">Grand Total</span></td>
+        </tr>
+        {% elif g_alu == 1 %}
+        <tr style="background:var(--bg);">
+          <td class="td-muted" style="font-size:12px;">{{ mes.strftime('%b %Y') if mes else '—' }}</td>
+          <td class="td-muted" style="font-family:var(--font-secondary);font-size:11px;text-transform:uppercase;letter-spacing:.06em;">Subtotal mes</td>
+          <td style="text-align:center;"><span class="badge badge-dark">{{ n }}</span></td>
+          <td><span class="badge">Subtotal</span></td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="td-muted" style="font-size:12px;">{{ mes.strftime('%b %Y') if mes else '—' }}</td>
+          <td>{{ alumno or '—' }}</td>
+          <td style="text-align:center;"><span class="badge badge-green">{{ n }}</span></td>
+          <td><span class="td-muted" style="font-size:11px;">Detalle</span></td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty"><div class="empty-icon"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg></div>Sin datos de matrículas.</div>
+    {% endif %}
+  </div>
+
+  <!-- ══════════════════════════════════════════════════
+       CASO 3 — GROUPING SETS
+       ══════════════════════════════════════════════════ -->
+  <div class="table-wrap" style="margin-bottom:32px;">
+    <div class="table-toolbar">
+      <div>
+        <span style="font-family:var(--font-secondary);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--fg-muted);">Caso 3 — GROUPING SETS</span>
+        <span style="font-family:var(--font-secondary);font-size:12px;color:var(--fg-muted);margin-left:8px;">Cortes exactos: (mes, asignatura) · por mes · total global</span>
+      </div>
+    </div>
+    <div class="tx-log" style="margin:12px 20px 0;padding:10px 14px;font-size:12px;">
+      <code>GROUP BY GROUPING SETS ((mes, asignatura), (mes), ())</code>
+    </div>
+
+    {% if rows_grouping_sets %}
+    <table>
+      <thead>
+        <tr><th>Mes</th><th>Asignatura</th><th style="text-align:center;">Matrículas</th><th>Corte</th></tr>
+      </thead>
+      <tbody>
+        {% for mes, asignatura, n, g_mes, g_asig in rows_grouping_sets %}
+        {% if g_mes == 1 and g_asig == 1 %}
+        <tr style="background:var(--surface);font-weight:700;">
+          <td colspan="2" class="td-muted" style="font-family:var(--font-secondary);font-size:11px;text-transform:uppercase;letter-spacing:.06em;">TOTAL GLOBAL</td>
+          <td style="text-align:center;"><span class="badge badge-dark">{{ n }}</span></td>
+          <td><span class="badge badge-red">( )</span></td>
+        </tr>
+        {% elif g_asig == 1 %}
+        <tr style="background:var(--bg);">
+          <td class="td-muted" style="font-size:12px;">{{ mes.strftime('%b %Y') if mes else '—' }}</td>
+          <td class="td-muted" style="font-family:var(--font-secondary);font-size:11px;text-transform:uppercase;letter-spacing:.06em;">Total mes</td>
+          <td style="text-align:center;"><span class="badge badge-dark">{{ n }}</span></td>
+          <td><span class="badge">(mes)</span></td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="td-muted" style="font-size:12px;">{{ mes.strftime('%b %Y') if mes else '—' }}</td>
+          <td>{{ asignatura or '—' }}</td>
+          <td style="text-align:center;"><span class="badge badge-green">{{ n }}</span></td>
+          <td><span class="td-muted" style="font-size:11px;">(mes, asig.)</span></td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty"><div class="empty-icon"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg></div>Sin datos de matrículas.</div>
+    {% endif %}
+  </div>
+
+  <!-- ══════════════════════════════════════════════════
+       CASO 4 — ROW_NUMBER: top 3 asignaturas por mes
+       ══════════════════════════════════════════════════ -->
+  <div class="table-wrap" style="margin-bottom:32px;">
+    <div class="table-toolbar">
+      <div>
+        <span style="font-family:var(--font-secondary);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--fg-muted);">Caso 4 — ROW_NUMBER</span>
+        <span style="font-family:var(--font-secondary);font-size:12px;color:var(--fg-muted);margin-left:8px;">Top 3 asignaturas con más matrículas por mes</span>
+      </div>
+    </div>
+    <div class="tx-log" style="margin:12px 20px 0;padding:10px 14px;font-size:12px;">
+      <code>row_number() OVER (PARTITION BY mes ORDER BY n_matriculas DESC)</code>
+    </div>
+
+    {% if rows_row_number %}
+    <table>
+      <thead>
+        <tr><th>Mes</th><th style="text-align:center;">Pos.</th><th>Asignatura</th><th style="text-align:center;">Matrículas</th></tr>
+      </thead>
+      <tbody>
+        {% set ns = namespace(last_mes=None) %}
+        {% for mes, asignatura, n, posicion in rows_row_number %}
+        {% if mes != ns.last_mes %}
+          {% if ns.last_mes is not none %}
+          <tr><td colspan="4" style="padding:0;border:none;height:6px;background:transparent;"></td></tr>
+          {% endif %}
+          {% set ns.last_mes = mes %}
+        {% endif %}
+        <tr>
+          <td class="td-muted" style="font-size:12px;">{{ mes.strftime('%b %Y') if mes else '—' }}</td>
+          <td style="text-align:center;">
+            {% if posicion == 1 %}
+              <span class="badge badge-green" style="font-size:13px;font-weight:700;">🥇</span>
+            {% elif posicion == 2 %}
+              <span class="badge" style="font-size:13px;">🥈</span>
+            {% else %}
+              <span class="badge" style="font-size:13px;">🥉</span>
+            {% endif %}
+          </td>
+          <td><strong>{{ asignatura }}</strong></td>
+          <td style="text-align:center;"><span class="badge badge-dark">{{ n }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty"><div class="empty-icon"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg></div>Sin datos de matrículas.</div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

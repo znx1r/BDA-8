@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="mb-7">
+    <h1 class="text-2xl font-bold">{{title}}</h1>
+    <p> GET /{{title.lower()}} - {{ n_elements }} registros</p>
+</div>
+
+<div class="w-full border rounded-lg flex flex-row items-center justify-between px-6 py-3">
+    <form>
+        <input class="input-sm input-text border border-zinc-200 bg-zinc-100 rounded-md px-3 py-1" placeholder="Buscar {{title.lower()}}..." />
+    </form>
+    <button class="bg-zinc-900 text-white text-sm font-medium px-4 py-1.5 rounded-md hover:bg-zinc-700"><p>+ Añadir {{title.lower()}}</p></button>
+</div>
+{% endblock %}

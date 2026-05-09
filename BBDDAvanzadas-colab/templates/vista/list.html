@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container page-enter">
+
+  <div class="page-header">
+    <h1>Vista — Matrículas</h1>
+    <p>SELECT alumno, profesor, asignatura FROM <strong>vista_matriculas_detalle</strong> — {{ total }} registros</p>
+  </div>
+
+  <!-- Explicación de la vista -->
+  <div class="vista-info-card">
+    <div class="vista-info-icon">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+      </svg>
+    </div>
+    <div class="vista-info-body">
+      <div class="vista-info-title">vista_matriculas_detalle</div>
+      <p>Vista PostgreSQL que cruza las tablas <code>matriculas</code>, <code>alumnos</code>, <code>cursos</code> y <code>profesores</code> mediante JOINs. Cada fila representa una matrícula activa con el nombre del alumno, el profesor que imparte la asignatura y el nombre de la propia asignatura.</p>
+      <div class="vista-sql-block">
+        <div class="vista-sql-label">Definición SQL de la vista</div>
+        <pre class="vista-sql">CREATE OR REPLACE VIEW vista_matriculas_detalle AS
+SELECT
+    a.nombre  AS alumno,
+    p.nombre  AS profesor,
+    c.nombre  AS asignatura,
+    m.created_at
+FROM matriculas m
+JOIN alumnos    a ON m.alumno_id   = a.id
+JOIN cursos     c ON m.curso_id    = c.id
+JOIN profesores p ON c.profesor_id = p.id;</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabla con los resultados de la vista -->
+  <div class="table-wrap" style="margin-top: 28px;">
+    <form method="get" class="filter-bar" id="filter-form">
+      <div class="filter-group">
+        <label class="filter-label">Buscar</label>
+        <input class="filter-input filter-input-wide" name="q" value="{{ q }}"
+               placeholder="Alumno, profesor o asignatura…" autocomplete="off" />
+      </div>
+      <div class="filter-sep"></div>
+      <div class="filter-group">
+        <label class="filter-label">Desde</label>
+        <input class="filter-input" name="fecha_desde" type="date" value="{{ fecha_desde or '' }}" />
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">Hasta</label>
+        <input class="filter-input" name="fecha_hasta" type="date" value="{{ fecha_hasta or '' }}" />
+      </div>
+      <button type="submit" class="btn btn-primary" style="margin-left:auto;">Filtrar</button>
+      <a href="/vista/" class="btn">Limpiar</a>
+    </form>
+
+    <div class="table-toolbar">
+      <span class="pagination-info">{{ filtered }} de {{ total }} filas</span>
+      <div class="toolbar-spacer"></div>
+      <span class="nav-count">vista en vivo</span>
+    </div>
+
+    {% if rows %}
+    <table>
+      <thead>
+        <tr>
+          <th>Alumno</th>
+          <th>Profesor</th>
+          <th>Asignatura</th>
+          <th>Fecha matrícula</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for alumno, profesor, asignatura, fecha in rows %}
+        <tr>
+          <td><strong>{{ alumno }}</strong></td>
+          <td class="td-muted">{{ profesor }}</td>
+          <td>{{ asignatura }}</td>
+          <td class="td-mono td-muted">{{ fecha }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="pagination">
+      <span class="pagination-info">{{ filtered }} registros</span>
+      <div class="pagination-btns">
+        <a href="?q={{ q }}&fecha_desde={{ fecha_desde or '' }}&fecha_hasta={{ fecha_hasta or '' }}&page={{ page - 1 }}" class="pg-btn {{ 'disabled' if page == 1 }}">‹</a>
+        {% for p in pages %}
+          <a href="?q={{ q }}&fecha_desde={{ fecha_desde or '' }}&fecha_hasta={{ fecha_hasta or '' }}&page={{ p }}" class="pg-btn {{ 'active' if p == page }}">{{ p }}</a>
+        {% endfor %}
+        <a href="?q={{ q }}&fecha_desde={{ fecha_desde or '' }}&fecha_hasta={{ fecha_hasta or '' }}&page={{ page + 1 }}" class="pg-btn {{ 'disabled' if page == total_pages }}">›</a>
+      </div>
+    </div>
+
+    {% else %}
+    <div class="empty">
+      <div class="empty-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+        </svg>
+      </div>
+      No se encontraron resultados{% if q %} para "{{ q }}"{% endif %}.
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

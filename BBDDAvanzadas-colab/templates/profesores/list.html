@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container page-enter">
+  <div class="page-header">
+    <h1>Profesores</h1>
+    <p>GET /profesores — {{ total }} registros</p>
+  </div>
+
+  <div class="table-wrap">
+    <form method="get" class="filter-bar" id="filter-form">
+      <div class="filter-group">
+        <label class="filter-label">Buscar</label>
+        <input class="filter-input filter-input-wide" name="q" value="{{ q }}" placeholder="Nombre…" autocomplete="off" />
+      </div>
+      <div class="filter-sep"></div>
+      <div class="filter-group">
+        <label class="filter-label">Cursos</label>
+        <input class="filter-input filter-input-short" name="cursos_min" type="number" min="0" value="{{ cursos_min or '' }}" placeholder="Mín." />
+        <span class="filter-sep">–</span>
+        <input class="filter-input filter-input-short" name="cursos_max" type="number" min="0" value="{{ cursos_max or '' }}" placeholder="Máx." />
+      </div>
+      <button type="submit" class="btn btn-primary" style="margin-left:auto;">Filtrar</button>
+      <a href="/profesores/" class="btn">Limpiar</a>
+    </form>
+
+    <div class="table-toolbar">
+      <span class="pagination-info">{{ filtered }} de {{ total }} registros</span>
+      <div class="toolbar-spacer"></div>
+      <button class="btn btn-primary" onclick="openModal('modal-nuevo-profesor')">+ Nuevo profesor</button>
+    </div>
+
+    {% if rows %}
+    <table>
+      <thead>
+        <tr><th>#</th><th>Nombre</th><th>Cursos</th><th>Alumnos distintos</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for id, nombre, n_cursos, n_alumnos in rows %}
+        <tr onclick="location.href='/profesores/{{ id }}'">
+          <td class="td-muted td-mono">{{ id[:8] }}…</td>
+          <td><strong>{{ nombre }}</strong></td>
+          <td><span class="badge">{{ n_cursos }} cursos</span></td>
+          <td><span class="badge badge-dark">{{ n_alumnos }} alumnos</span></td>
+          <td style="width:40px;">
+            <button class="btn btn-danger" style="padding:4px 10px;font-size:12px;"
+                    onclick="event.stopPropagation(); confirmDeleteProfesor('{{ id }}','{{ nombre }}')">✕</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="pagination">
+      <span class="pagination-info">{{ filtered }} registros</span>
+      <div class="pagination-btns">
+        <a href="?q={{ q }}&cursos_min={{ cursos_min or '' }}&cursos_max={{ cursos_max or '' }}&page={{ page - 1 }}" class="pg-btn {{ 'disabled' if page == 1 }}">‹</a>
+        {% for p in pages %}
+          <a href="?q={{ q }}&cursos_min={{ cursos_min or '' }}&cursos_max={{ cursos_max or '' }}&page={{ p }}" class="pg-btn {{ 'active' if p == page }}">{{ p }}</a>
+        {% endfor %}
+        <a href="?q={{ q }}&cursos_min={{ cursos_min or '' }}&cursos_max={{ cursos_max or '' }}&page={{ page + 1 }}" class="pg-btn {{ 'disabled' if page == total_pages }}">›</a>
+      </div>
+    </div>
+    {% else %}
+    <div class="empty">
+      <div class="empty-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
+      </div>
+      No se encontraron profesores{% if q %} para "{{ q }}"{% endif %}.
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Modal: Confirmar eliminación -->
+<div id="modal-confirmar-eliminar" class="modal-overlay hidden" onclick="if(event.target===this) closeModal('modal-confirmar-eliminar')">
+  <div class="modal modal-enter">
+    <h2>Eliminar profesor</h2>
+    <p class="modal-sub">Esta acción no se puede deshacer.</p>
+    <p id="confirm-delete-msg" style="margin:16px 0;"></p>
+    <div class="form-actions">
+      <button type="button" class="btn" onclick="closeModal('modal-confirmar-eliminar')">Cancelar</button>
+      <button type="button" class="btn btn-danger" onclick="executeDeleteProfesor()">Sí, eliminar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Nuevo Profesor -->
+<div id="modal-nuevo-profesor" class="modal-overlay hidden" onclick="if(event.target===this) closeModal('modal-nuevo-profesor')">
+  <div class="modal modal-enter">
+    <h2>Nuevo profesor</h2>
+    <p class="modal-sub">POST /profesores/new</p>
+    <form id="form-profesor" onsubmit="submitProfesor(event)">
+      <div class="form-group">
+        <label class="form-label">Nombre completo</label>
+        <input class="form-input" id="p-nombre" name="nombre" placeholder="Ej: Dr. Ana García" />
+        <p class="form-error" id="p-nombre-err" style="display:none;"></p>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn" onclick="closeModal('modal-nuevo-profesor')">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Guardar profesor</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/profesores.js') }}"></script>
+{% endblock %}

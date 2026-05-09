@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} | Gestor Académico</title>
+    <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Space+Grotesk:wght@300;400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+</head>
+<body>
+    <nav>
+        <a class="nav-brand" href="/home/">Gestor Académico</a>
+        {% set path = request.path %}
+        <div class="nav-links">
+            <a href="/home/"        class="nav-link {{ 'active' if path == '/home/' }}">Inicio</a>
+            <a href="/profesores"   class="nav-link {{ 'active' if path.startswith('/profesores') }}">Profesores</a>
+            <a href="/alumnos"      class="nav-link {{ 'active' if path.startswith('/alumnos') }}">Alumnos</a>
+            <a href="/asignaturas"  class="nav-link {{ 'active' if path.startswith('/asignaturas') }}">Asignaturas</a>
+<a href="/matriculas"   class="nav-link {{ 'active' if path.startswith('/matriculas') }}">Matrículas</a>
+            <a href="/transacciones" class="nav-link {{ 'active' if path.startswith('/transacciones') }}">Transacciones</a>
+            <a href="/vista/"        class="nav-link {{ 'active' if path.startswith('/vista') }}">Vista SQL</a>
+            <a href="/analitica/"    class="nav-link {{ 'active' if path.startswith('/analitica') }}">Analítica</a>
+            {% if session.get('user') and session.user.rol == 'admin' %}
+            <a href="/auditoria" class="nav-link {{ 'active' if path.startswith('/auditoria') }}">Auditoría</a>
+            {% endif %}
+        </div>
+        <div class="nav-spacer"></div>
+        {% if session.get('user') %}
+        <div class="nav-user">
+            <div class="nav-user-avatar">{{ session.user.nombre.split()[:2] | map('first') | join | upper }}</div>
+            <div class="nav-user-info">
+                <span class="nav-user-name">{{ session.user.nombre }}</span>
+                <span class="nav-user-rol">{{ session.user.rol }}</span>
+            </div>
+            <a href="/auth/logout" class="nav-logout">
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 9V5.25A2.25 2.25 0 0 1 10.5 3h6a2.25 2.25 0 0 1 2.25 2.25v13.5A2.25 2.25 0 0 1 16.5 21h-6a2.25 2.25 0 0 1-2.25-2.25V15m-3 0-3-3m0 0 3-3m-3 3H15" />
+                </svg>
+            </a>
+        </div>
+        {% else %}
+        <a href="/auth/login" class="btn btn-primary" style="font-size:13px;padding:6px 14px;">Iniciar sesión</a>
+        {% endif %}
+    </nav>
+
+    <main class="main">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script>
+    function showToast(msg, isError) {
+        const t = document.createElement('div');
+        t.className = 'toast' + (isError ? ' error' : '');
+        t.textContent = msg;
+        document.body.appendChild(t);
+        setTimeout(() => t.remove(), 3200);
+    }
+    function openModal(id)  { document.getElementById(id).classList.remove('hidden'); }
+    function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+    </script>
+    <script>
+    // Mark filter inputs that have a value so CSS can highlight them
+    document.querySelectorAll('.filter-bar .filter-input, .filter-bar .filter-select').forEach(el => {
+        if (el.value && el.value.trim()) el.classList.add('has-value');
+        el.addEventListener('input', () => el.value.trim() ? el.classList.add('has-value') : el.classList.remove('has-value'));
+        el.addEventListener('change', () => el.value.trim() ? el.classList.add('has-value') : el.classList.remove('has-value'));
+    });
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

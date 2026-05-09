@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container page-enter">
+  <div class="page-header">
+    <h1>Auditoría</h1>
+    <p>GET /auditoria — {{ total }} registros totales</p>
+  </div>
+
+  <div class="table-wrap">
+    <form method="get" class="filter-bar" id="filter-form">
+      <div class="filter-group">
+        <label class="filter-label">Buscar</label>
+        <input class="filter-input filter-input-wide" name="q" value="{{ q }}" placeholder="Usuario, ID o detalle…" autocomplete="off" />
+      </div>
+      <div class="filter-sep"></div>
+      <div class="filter-group">
+        <label class="filter-label">Entidad</label>
+        <select class="filter-select" name="entidad">
+          <option value="">Todas</option>
+          <option value="profesor"   {{ 'selected' if entidad == 'profesor' }}>Profesor</option>
+          <option value="alumno"     {{ 'selected' if entidad == 'alumno' }}>Alumno</option>
+          <option value="asignatura" {{ 'selected' if entidad == 'asignatura' }}>Asignatura</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">Acción</label>
+        <select class="filter-select" name="accion">
+          <option value="">Todas</option>
+          <option value="CREATE" {{ 'selected' if accion == 'CREATE' }}>CREATE</option>
+          <option value="UPDATE" {{ 'selected' if accion == 'UPDATE' }}>UPDATE</option>
+          <option value="DELETE" {{ 'selected' if accion == 'DELETE' }}>DELETE</option>
+        </select>
+      </div>
+      <div class="filter-sep"></div>
+      <div class="filter-group">
+        <label class="filter-label">Desde</label>
+        <input class="filter-input" name="fecha_desde" type="date" value="{{ fecha_desde or '' }}" />
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">Hasta</label>
+        <input class="filter-input" name="fecha_hasta" type="date" value="{{ fecha_hasta or '' }}" />
+      </div>
+      <button type="submit" class="btn btn-primary" style="margin-left:auto;">Filtrar</button>
+      <a href="/auditoria/" class="btn">Limpiar</a>
+    </form>
+
+    <div class="table-toolbar">
+      <span class="pagination-info">{{ filtered }} de {{ total }} registros</span>
+      <div class="toolbar-spacer"></div>
+      {% if is_admin %}
+      <button class="btn btn-danger" onclick="confirmLimpiarTodo()">🗑 Limpiar todo</button>
+      {% endif %}
+    </div>
+
+    {% if rows %}
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Usuario</th>
+          <th>Acción</th>
+          <th>Entidad</th>
+          <th>ID entidad</th>
+          <th>Detalle</th>
+          <th>Fecha</th>
+          {% if is_admin %}<th></th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for id, usuario, accion, entidad, entidad_id, detalle, created_at in rows %}
+        <tr>
+          <td class="td-muted td-mono">{{ id }}</td>
+          <td><strong>{{ usuario }}</strong></td>
+          <td>
+            {% if accion == 'CREATE' %}
+              <span class="badge badge-green">CREATE</span>
+            {% elif accion == 'DELETE' %}
+              <span class="badge badge-red">DELETE</span>
+            {% else %}
+              <span class="badge badge-dark">{{ accion }}</span>
+            {% endif %}
+          </td>
+          <td><span class="badge">{{ entidad }}</span></td>
+          <td class="td-muted td-mono" style="font-size:11px;">{{ (entidad_id or '')[:12] }}{% if entidad_id and entidad_id|length > 12 %}…{% endif %}</td>
+          <td>{{ detalle or '—' }}</td>
+          <td class="td-muted" style="white-space:nowrap;font-size:12px;">{{ created_at.strftime('%d/%m/%Y %H:%M') if created_at else '—' }}</td>
+          {% if is_admin %}
+          <td style="width:40px;">
+            <button class="btn btn-danger" style="padding:4px 10px;font-size:12px;"
+                    onclick="confirmDeleteAuditoria({{ id }})">✕</button>
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="pagination">
+      <span class="pagination-info">{{ filtered }} registros</span>
+      <div class="pagination-btns">
+        <a href="?q={{ q }}&entidad={{ entidad }}&accion={{ accion }}&fecha_desde={{ fecha_desde or '' }}&fecha_hasta={{ fecha_hasta or '' }}&page={{ page - 1 }}" class="pg-btn {{ 'disabled' if page == 1 }}">‹</a>
+        {% for p in pages %}
+          <a href="?q={{ q }}&entidad={{ entidad }}&accion={{ accion }}&fecha_desde={{ fecha_desde or '' }}&fecha_hasta={{ fecha_hasta or '' }}&page={{ p }}" class="pg-btn {{ 'active' if p == page }}">{{ p }}</a>
+        {% endfor %}
+        <a href="?q={{ q }}&entidad={{ entidad }}&accion={{ accion }}&fecha_desde={{ fecha_desde or '' }}&fecha_hasta={{ fecha_hasta or '' }}&page={{ page + 1 }}" class="pg-btn {{ 'disabled' if page == total_pages }}">›</a>
+      </div>
+    </div>
+    {% else %}
+    <div class="empty">
+      <div class="empty-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
+      </div>
+      No hay registros de auditoría{% if q %} para "{{ q }}"{% endif %}.
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% if is_admin %}
+<!-- Modal: Confirmar eliminación individual -->
+<div id="modal-confirmar-eliminar" class="modal-overlay hidden" onclick="if(event.target===this) closeModal('modal-confirmar-eliminar')">
+  <div class="modal modal-enter">
+    <h2>Eliminar registro</h2>
+    <p class="modal-sub">Esta acción no se puede deshacer.</p>
+    <p style="margin:16px 0;">¿Eliminar este registro de auditoría?</p>
+    <div class="form-actions">
+      <button type="button" class="btn" onclick="closeModal('modal-confirmar-eliminar')">Cancelar</button>
+      <button type="button" class="btn btn-danger" onclick="executeDelete()">Sí, eliminar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Limpiar todo -->
+<div id="modal-limpiar-todo" class="modal-overlay hidden" onclick="if(event.target===this) closeModal('modal-limpiar-todo')">
+  <div class="modal modal-enter">
+    <h2>Limpiar historial</h2>
+    <p class="modal-sub">Esta acción no se puede deshacer.</p>
+    <p style="margin:16px 0;">Se eliminarán <strong>todos</strong> los registros de auditoría.</p>
+    <div class="form-actions">
+      <button type="button" class="btn" onclick="closeModal('modal-limpiar-todo')">Cancelar</button>
+      <button type="button" class="btn btn-danger" onclick="executeLimpiar()">Sí, limpiar todo</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/auditoria.js') }}"></script>
+{% endblock %}

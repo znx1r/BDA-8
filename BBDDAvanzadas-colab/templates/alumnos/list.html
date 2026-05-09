@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container page-enter">
+  <div class="page-header">
+    <h1>Alumnos</h1>
+    <p>GET /alumnos — {{ total }} registros</p>
+  </div>
+
+  <div class="table-wrap">
+    <form method="get" class="filter-bar" id="filter-form">
+      <div class="filter-group">
+        <label class="filter-label">Buscar</label>
+        <input class="filter-input filter-input-wide" name="q" value="{{ q }}" placeholder="Nombre o email…" autocomplete="off" />
+      </div>
+      <div class="filter-sep"></div>
+      <div class="filter-group">
+        <label class="filter-label">Saldo (€)</label>
+        <input class="filter-input filter-input-short" name="saldo_min" type="number" step="0.01" value="{{ saldo_min or '' }}" placeholder="Mín." />
+        <span class="filter-sep">–</span>
+        <input class="filter-input filter-input-short" name="saldo_max" type="number" step="0.01" value="{{ saldo_max or '' }}" placeholder="Máx." />
+      </div>
+      <button type="submit" class="btn btn-primary" style="margin-left:auto;">Filtrar</button>
+      <a href="/alumnos/" class="btn">Limpiar</a>
+    </form>
+
+    <div class="table-toolbar">
+      <span class="pagination-info">{{ filtered }} de {{ total }} registros</span>
+      <div class="toolbar-spacer"></div>
+      <button class="btn btn-primary" onclick="openModal('modal-nuevo-alumno')">+ Nuevo alumno</button>
+    </div>
+
+    {% if rows %}
+    <table>
+      <thead>
+        <tr><th>#</th><th>Nombre</th><th>Email</th><th>Saldo</th><th>Matrículas</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for id, nombre, email, saldo, n_matriculas in rows %}
+        <tr onclick="location.href='/alumnos/{{ id }}'">
+          <td class="td-muted td-mono">{{ id[:8] }}…</td>
+          <td><strong>{{ nombre }}</strong></td>
+          <td class="td-mono td-muted">{{ email }}</td>
+          <td>
+            <span class="badge {{ 'badge-green' if saldo >= 100 else 'badge-red' }}">
+              {{ "%.2f"|format(saldo) }} €
+            </span>
+          </td>
+          <td><span class="badge">{{ n_matriculas }}</span></td>
+          <td style="width:90px; white-space:nowrap;">
+            <button class="btn" style="padding:4px 8px;font-size:11px;margin-right:4px;"
+                    title="Recargar saldo"
+                    onclick="event.stopPropagation(); openRecharge('{{ id }}','{{ nombre }}','{{ '%.2f'|format(saldo) }}')">+€</button>
+            <button class="btn btn-danger" style="padding:4px 10px;font-size:12px;"
+                    onclick="event.stopPropagation(); confirmDeleteAlumno('{{ id }}','{{ nombre }}')">✕</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="pagination">
+      <span class="pagination-info">{{ filtered }} registros</span>
+      <div class="pagination-btns">
+        <a href="?q={{ q }}&saldo_min={{ saldo_min or '' }}&saldo_max={{ saldo_max or '' }}&page={{ page - 1 }}" class="pg-btn {{ 'disabled' if page == 1 }}">‹</a>
+        {% for p in pages %}
+          <a href="?q={{ q }}&saldo_min={{ saldo_min or '' }}&saldo_max={{ saldo_max or '' }}&page={{ p }}" class="pg-btn {{ 'active' if p == page }}">{{ p }}</a>
+        {% endfor %}
+        <a href="?q={{ q }}&saldo_min={{ saldo_min or '' }}&saldo_max={{ saldo_max or '' }}&page={{ page + 1 }}" class="pg-btn {{ 'disabled' if page == total_pages }}">›</a>
+      </div>
+    </div>
+    {% else %}
+    <div class="empty">
+      <div class="empty-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
+      </div>
+      No se encontraron alumnos{% if q %} para "{{ q }}"{% endif %}.
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Modal: Confirmar eliminación -->
+<div id="modal-confirmar-eliminar" class="modal-overlay hidden" onclick="if(event.target===this) closeModal('modal-confirmar-eliminar')">
+  <div class="modal modal-enter">
+    <h2>Eliminar alumno</h2>
+    <p class="modal-sub">Esta acción no se puede deshacer.</p>
+    <p id="confirm-delete-msg" style="margin:16px 0;"></p>
+    <div class="form-actions">
+      <button type="button" class="btn" onclick="closeModal('modal-confirmar-eliminar')">Cancelar</button>
+      <button type="button" class="btn btn-danger" onclick="executeDeleteAlumno()">Sí, eliminar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Recargar saldo -->
+<div id="modal-recharge" class="modal-overlay hidden" onclick="if(event.target===this) closeModal('modal-recharge')">
+  <div class="modal modal-enter">
+    <h2>Recargar saldo</h2>
+    <p class="modal-sub">POST /alumnos/recharge</p>
+    <form id="form-recharge" onsubmit="submitRecharge(event)">
+      <input type="hidden" id="r-alumno-id" name="alumno_id" />
+      <div class="form-group">
+        <label class="form-label">Alumno</label>
+        <p id="r-alumno-nombre" style="font-family:var(--font-secondary);font-size:13px;color:var(--fg);margin-top:4px;"></p>
+        <p id="r-saldo-actual" style="font-family:var(--font-secondary);font-size:12px;color:var(--fg-muted);margin-top:2px;"></p>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Cantidad a añadir (€)</label>
+        <input class="form-input" id="r-cantidad" name="cantidad" type="number" min="1" max="9999" step="0.01" placeholder="Ej: 250.00" />
+        <p class="form-error" id="r-cantidad-err" style="display:none;"></p>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn" onclick="closeModal('modal-recharge')">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Recargar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: Nuevo Alumno -->
+<div id="modal-nuevo-alumno" class="modal-overlay hidden" onclick="if(event.target===this) closeModal('modal-nuevo-alumno')">
+  <div class="modal modal-enter">
+    <h2>Nuevo alumno</h2>
+    <p class="modal-sub">POST /alumnos/new</p>
+    <form id="form-alumno" onsubmit="submitAlumno(event)">
+      <div class="form-group">
+        <label class="form-label">Nombre completo</label>
+        <input class="form-input" id="a-nombre" name="nombre" placeholder="Ej: María García López" />
+        <p class="form-error" id="a-nombre-err" style="display:none;"></p>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input class="form-input" id="a-email" name="email" placeholder="Ej: maria.garcia@universidad.es" />
+        <p class="form-error" id="a-email-err" style="display:none;"></p>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Saldo inicial (€)</label>
+        <input class="form-input" id="a-saldo" name="saldo" type="number" min="0" step="0.01" value="500" placeholder="500.00" />
+        <p class="form-error" id="a-saldo-err" style="display:none;"></p>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn" onclick="closeModal('modal-nuevo-alumno')">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Guardar alumno</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/alumnos.js') }}"></script>
+{% endblock %}

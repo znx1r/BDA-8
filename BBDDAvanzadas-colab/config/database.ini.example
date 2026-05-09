@@ -1,0 +1,14 @@
+[postgresql]
+host=localhost
+database=nombre_base_datos
+user=usuario
+password=contraseña
+port=5432
+
+[server]
+server_ip=0.0.0.0
+server_port=3000
+template_dir=./templates
+
+[app]
+page_size=10

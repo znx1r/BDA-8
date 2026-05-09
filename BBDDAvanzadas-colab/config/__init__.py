@@ -1,0 +1,6 @@
+from config.load import (
+    SERVER_IP, SERVER_PORT, TEMPLATE_DIR,
+    PG_HOST, PG_NAME, PG_PASSWORD, PG_PORT, PG_USER,
+    PAGE_SIZE,
+    BASE_DIR, SQLITE_PATH,
+)
