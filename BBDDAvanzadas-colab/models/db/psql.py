@@ -18,7 +18,7 @@ from .querys import (
     DELETE_AUDITORIA, DELETE_ALL_AUDITORIA,
     ALTER_ALUMNOS_SALDO, ALTER_CURSOS_PRECIO, ALTER_CURSOS_MAX_ALUMNOS, ALTER_CURSOS_NOMBRE_EN,
     CREATE_EXTENSION_UNACCENT, CREATE_EXTENSION_CITEXT, CREATE_EXTENSION_FUZZYSTRMATCH,
-    CREATE_EXTENSION_BTREE_GIN, CREATE_EXTENSION_PG_TRGM,
+    CREATE_EXTENSION_BTREE_GIN, CREATE_EXTENSION_PG_TRGM, CREATE_EXTENSION_POSTGIS,
     CREATE_INDEX_CURSOS_NOMBRE_TRGM, CREATE_INDEX_CURSOS_NOMBRE_EN_TRGM,
     CREATE_INDEX_ALUMNOS_NOMBRE_TRGM, CREATE_INDEX_PROFESORES_NOMBRE_TRGM,
     SELECT_ALUMNO_FOR_ENROLL, SELECT_CURSO_FOR_ENROLL,
@@ -37,6 +37,13 @@ from .querys import (
     SELECT_AUDITORIA_FILTER_BASE, SELECT_AUDITORIA_FILTER_TAIL,
     SELECT_ANALITICA_FILTER, SELECT_ANALITICA_ROLLUP,
     SELECT_ANALITICA_GROUPING_SETS, SELECT_ANALITICA_ROW_NUMBER,
+    # Tema 14 — GIS / PostGIS
+    ALTER_ALUMNOS_GEOM, ALTER_CURSOS_GEOM,
+    CREATE_INDEX_ALUMNOS_GEOM, CREATE_INDEX_CURSOS_GEOM,
+    SEED_ALUMNOS_GEOM, SEED_CURSOS_GEOM,
+    VIAJAR_ALUMNO_A_AULA, SELECT_ALUMNO_UBICACION,
+    SELECT_CURSO_GEOM_INFO, SELECT_CURSOS_CON_GEOM,
+    SELECT_ALUMNOS_EN_AULA, SELECT_DISTANCIA_ALUMNO_AULA,
 )
 from .filters import FilterBuilder
 from ..entities import Alumnos, Profesores, Cursos, Matriculas
@@ -57,7 +64,7 @@ class PostgreSQL():
         cursor.execute(SELECT_VERSION)
         return cursor.fetchone()
 
-    # Extensiones Tema 12 — requieren autocommit, no pueden ir dentro de una transacción
+    # Extensiones Tema 12 y Tema 14 — requieren autocommit, no pueden ir dentro de una transacción
     @with_cursor
     def create_extensions(self, cursor):
         cursor.execute(CREATE_EXTENSION_UNACCENT)
@@ -65,6 +72,10 @@ class PostgreSQL():
         cursor.execute(CREATE_EXTENSION_FUZZYSTRMATCH)
         cursor.execute(CREATE_EXTENSION_BTREE_GIN)
         cursor.execute(CREATE_EXTENSION_PG_TRGM)
+        try:
+            cursor.execute(CREATE_EXTENSION_POSTGIS)
+        except Exception as e:
+            print(f"[GIS] PostGIS no disponible (se omite): {e}")
 
     # Creacion de todas las tablas de Postgresql
     @with_transactions
@@ -105,6 +116,16 @@ class PostgreSQL():
         from models.dag.utils import CURSOS
         for nombre_es, nombre_en in CURSOS:
             cursor.execute(UPDATE_CURSO_NOMBRE_EN, (nombre_en, nombre_es))
+        # Tema 14 — GIS: columnas de geometría y seed de datos espaciales
+        try:
+            cursor.execute(ALTER_ALUMNOS_GEOM)
+            cursor.execute(ALTER_CURSOS_GEOM)
+            cursor.execute(CREATE_INDEX_ALUMNOS_GEOM)
+            cursor.execute(CREATE_INDEX_CURSOS_GEOM)
+            cursor.execute(SEED_ALUMNOS_GEOM)
+            cursor.execute(SEED_CURSOS_GEOM)
+        except Exception as e:
+            print(f"[GIS] Migraciones espaciales omitidas (PostGIS no activo o error): {e}")
 
 # Operaciones del profesor
 class OperacionesProfesor():
@@ -651,3 +672,99 @@ class OperacionesAnalitica():
     def get_row_number(self, cursor):
         cursor.execute(SELECT_ANALITICA_ROW_NUMBER)
         return cursor.fetchall()
+
+
+# Tema 14 — GIS: operaciones espaciales con PostGIS
+class OperacionesGIS():
+    """
+    Operaciones espaciales sobre alumnos y cursos.
+    Requiere que la extensión PostGIS esté activa y las columnas
+    geom hayan sido creadas mediante create_tables().
+    """
+
+    @with_cursor
+    def get_alumno_ubicacion(self, cursor, alumno_id: str):
+        """Devuelve (id, nombre, lon, lat, wkt) del alumno si tiene geom."""
+        try:
+            cursor.execute(SELECT_ALUMNO_UBICACION, (alumno_id,))
+            return cursor.fetchone()
+        except (Exception, Error) as e:
+            print("Error al obtener ubicación del alumno:", e)
+            return None
+
+    @with_cursor
+    def get_curso_geom_info(self, cursor, curso_id: str):
+        """Devuelve (id, nombre, wkt, centroide_lon, centroide_lat, area_m2) del curso."""
+        try:
+            cursor.execute(SELECT_CURSO_GEOM_INFO, (curso_id,))
+            return cursor.fetchone()
+        except (Exception, Error) as e:
+            print("Error al obtener geometría del curso:", e)
+            return None
+
+    @with_cursor
+    def get_cursos_con_geom(self, cursor):
+        """Lista de cursos que tienen polígono de aula asignado."""
+        try:
+            cursor.execute(SELECT_CURSOS_CON_GEOM)
+            return cursor.fetchall()
+        except (Exception, Error) as e:
+            print("Error al obtener cursos con geometría:", e)
+            return []
+
+    @with_cursor
+    def get_alumnos_en_aula(self, cursor, curso_id: str):
+        """Alumnos cuya posición actual está dentro del polígono del aula del curso."""
+        try:
+            cursor.execute(SELECT_ALUMNOS_EN_AULA, (curso_id,))
+            return cursor.fetchall()
+        except (Exception, Error) as e:
+            print("Error al buscar alumnos en aula:", e)
+            return []
+
+    @with_cursor
+    def get_distancia_alumno_aula(self, cursor, alumno_id: str, curso_id: str):
+        """Distancia en metros entre la posición del alumno y el centroide del aula."""
+        try:
+            cursor.execute(SELECT_DISTANCIA_ALUMNO_AULA, (alumno_id, curso_id))
+            return cursor.fetchone()
+        except (Exception, Error) as e:
+            print("Error al calcular distancia:", e)
+            return None
+
+    @with_transactions
+    def viajar_a_aula(self, cursor, alumno_id: str, curso_id: str):
+        """
+        Mueve al alumno al centroide del polígono del aula del curso indicado.
+        Devuelve dict con ok, lon, lat, wkt y distancia_m (si había posición previa).
+        """
+        try:
+            # Distancia antes de mover (puede ser None si el alumno no tenía geom)
+            cursor.execute(SELECT_DISTANCIA_ALUMNO_AULA, (alumno_id, curso_id))
+            info_previa = cursor.fetchone()
+            if not info_previa:
+                raise Exception("Alumno o curso no encontrados.")
+
+            alumno_nombre, aula_nombre, destino_lon, destino_lat, distancia_m = info_previa
+
+            if destino_lon is None or destino_lat is None:
+                raise Exception(f"El curso «{aula_nombre}» no tiene polígono de aula asignado.")
+
+            # Mover al alumno
+            cursor.execute(VIAJAR_ALUMNO_A_AULA, (curso_id, alumno_id))
+            resultado = cursor.fetchone()
+            if not resultado:
+                raise Exception("No se pudo actualizar la posición del alumno.")
+
+            lon, lat, wkt = resultado
+            return {
+                "ok": True,
+                "alumno": alumno_nombre,
+                "aula": aula_nombre,
+                "lon": float(lon),
+                "lat": float(lat),
+                "wkt": wkt,
+                "distancia_m": float(distancia_m) if distancia_m is not None else None,
+            }
+        except Exception as e:
+            raise e

@@ -1,6 +1,6 @@
 import uuid
 from flask import Blueprint, request, render_template, jsonify, abort, session
-from models import OperacionesCurso, OperacionesProfesor, OperacionesAuditoria
+from models import OperacionesCurso, OperacionesProfesor, OperacionesAuditoria, OperacionesGIS
 from models import Cursos
 from ._helpers import _str, _float, _int, paginate
 
@@ -44,12 +44,17 @@ def detail(curso_id):
     curso  = gestor.get_by_id(curso_id)
     if not curso:
         abort(404)
-    alumnos = gestor.get_alumnos_by_curso(curso_id)
+    alumnos  = gestor.get_alumnos_by_curso(curso_id)
+    gis      = OperacionesGIS()
+    geom_info     = gis.get_curso_geom_info(curso_id)
+    alumnos_en_aula = gis.get_alumnos_en_aula(curso_id) if geom_info else []
     return render_template(
         "asignaturas/detail.html",
         title=curso[1],
         curso=curso,
         alumnos=alumnos,
+        geom_info=geom_info,
+        alumnos_en_aula=alumnos_en_aula,
     )
 
 

@@ -1,7 +1,7 @@
 import uuid
 import re
 from flask import Blueprint, request, render_template, jsonify, abort, session
-from models import OperacionesAlumno, OperacionesAuditoria
+from models import OperacionesAlumno, OperacionesAuditoria, OperacionesGIS
 from models import Alumnos
 from ._helpers import _str, _float, paginate
 
@@ -43,12 +43,17 @@ def detail(alumno_id):
         abort(404)
     cursos = gestor.get_cursos_by_alumno(alumno_id)
     profesores_distintos = len({c[2] for c in cursos})
+    gis = OperacionesGIS()
+    ubicacion       = gis.get_alumno_ubicacion(alumno_id)
+    aulas_con_geom  = gis.get_cursos_con_geom()
     return render_template(
         "alumnos/detail.html",
         title=alumno[1],
         alumno=alumno,
         cursos=cursos,
         profesores_distintos=profesores_distintos,
+        ubicacion=ubicacion,
+        aulas_con_geom=aulas_con_geom,
     )
 
 
@@ -94,6 +99,53 @@ def new():
         if 'email' in err.lower() or 'unique' in err.lower():
             return jsonify(ok=False, field='email', error='Este email ya está registrado.')
         return jsonify(ok=False, error=err)
+
+
+@alumnos_bp.route('/viajar', methods=['POST'])
+def viajar():
+    """
+    Mueve al alumno al centroide del polígono de aula del curso indicado.
+    Requiere PostGIS activo y que el curso tenga polígono asignado.
+    """
+    alumno_id = request.form.get('alumno_id', '').strip()
+    curso_id  = request.form.get('curso_id', '').strip()
+
+    if not alumno_id:
+        return jsonify(ok=False, error='Falta alumno_id.')
+    if not curso_id:
+        return jsonify(ok=False, error='Selecciona un aula de destino.')
+
+    try:
+        gis    = OperacionesGIS()
+        result = gis.viajar_a_aula(alumno_id=alumno_id, curso_id=curso_id)
+        usuario = session.get('user', {}).get('username', 'anónimo')
+        dist_txt = (f", distancia recorrida: {result['distancia_m']:.0f} m"
+                    if result.get('distancia_m') is not None else "")
+        OperacionesAuditoria().registrar(
+            usuario, 'UPDATE', 'alumno', alumno_id,
+            f"Viaje a aula «{result['aula']}» "
+            f"→ ({result['lon']:.6f}, {result['lat']:.6f}){dist_txt}"
+        )
+        return jsonify(
+            ok=True,
+            message=f'{result["alumno"]} ha llegado al aula «{result["aula"]}».',
+            lon=result['lon'],
+            lat=result['lat'],
+            wkt=result['wkt'],
+            distancia_m=result.get('distancia_m'),
+        )
+    except Exception as e:
+        return jsonify(ok=False, error=str(e))
+
+
+@alumnos_bp.route('/gis/<alumno_id>')
+def gis_info(alumno_id):
+    """Devuelve JSON con la ubicación actual del alumno (para uso interno/AJAX)."""
+    ubicacion = OperacionesGIS().get_alumno_ubicacion(alumno_id)
+    if not ubicacion:
+        return jsonify(ok=False, error='Este alumno no tiene ubicación registrada.')
+    _, nombre, lon, lat, wkt = ubicacion
+    return jsonify(ok=True, nombre=nombre, lon=float(lon), lat=float(lat), wkt=wkt)
 
 
 @alumnos_bp.route('/recharge', methods=['POST'])
